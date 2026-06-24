@@ -150,9 +150,10 @@ export function parseCSV(raw: string): ParseResult {
     const nombre = get(row, 'nombre')
     if (!nombre) { skipped++; continue }
 
-    // Rating limpio: acepta "4,6" o "4.6"
+    // Rating limpio: acepta "4,6" o "4.6" → trunca a 1 decimal para evitar overflow
     const ratingRaw = get(row, 'rating')
-    const rating = parseFloat(ratingRaw.replace(',', '.')) || null
+    const ratingParsed = parseFloat(ratingRaw.replace(',', '.'))
+    const rating = isNaN(ratingParsed) || ratingParsed > 9.9 || ratingParsed < 0 ? null : Math.round(ratingParsed * 10) / 10
 
     const prioridadRaw = norm(get(row, 'prioridad'))
     const prioridad: LeadPriority = prioridadRaw.includes('alta') ? 'alta'
@@ -164,7 +165,7 @@ export function parseCSV(raw: string): ParseResult {
 
     leads.push({
       nombre,
-      telefono:   get(row, 'telefono') || null,
+      telefono:   get(row, 'telefono').replace(/\.0+$/, '') || null,
       direccion:  get(row, 'direccion') || null,
       web:        get(row, 'web') || null,
       rating,

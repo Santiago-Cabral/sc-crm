@@ -7,11 +7,40 @@ import type { Lead } from '@/types/lead.types'
 
 type Status = 'idle' | 'preview' | 'importing' | 'done' | 'error'
 
+// Campos que existen en la tabla leads de Supabase
+const ALLOWED_FIELDS: (keyof Partial<Lead>)[] = [
+  'nombre', 'telefono', 'direccion', 'web', 'rating',
+  'rubro', 'ciudad', 'prioridad', 'etapa', 'tags',
+  'mensaje_d1', 'mensaje_d3', 'mensaje_d7',
+  'ai_analysis', 'source', 'observaciones',
+]
+
+// Elimina campos undefined/null problemáticos y filtra solo lo que acepta Supabase
+function sanitizeLead(lead: Partial<Lead>): Partial<Lead> {
+  const result: Partial<Lead> = {}
+  for (const key of ALLOWED_FIELDS) {
+    const val = lead[key]
+    if (val !== undefined && val !== '') {
+      // @ts-ignore
+      result[key] = val
+    }
+  }
+  // tags: siempre array
+  result.tags = Array.isArray(lead.tags) ? lead.tags : []
+  // rating: asegurarse que sea número con 1 decimal máximo o null
+  if (result.rating !== undefined && result.rating !== null) {
+    const n = parseFloat(String(result.rating).replace(',', '.'))
+    result.rating = isNaN(n) ? null : Math.round(n * 10) / 10
+  }
+  return result
+}
+
 export default function ImportPage() {
   const [status, setStatus] = useState<Status>('idle')
   const [preview, setPreview] = useState<Partial<Lead>[]>([])
   const [result, setResult] = useState({ imported: 0, skipped: 0, total: 0 })
   const [errorMsg, setErrorMsg] = useState('')
+  const [progress, setProgress] = useState(0)
   const fileRef = useRef<HTMLInputElement>(null)
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -30,16 +59,23 @@ export default function ImportPage() {
 
   async function handleImport() {
     setStatus('importing')
+    setProgress(0)
     const supabase = createClient()
     const BATCH = 50
     let imported = 0
 
     try {
-      for (let i = 0; i < preview.length; i += BATCH) {
-        const batch = preview.slice(i, i + BATCH)
+      const sanitized = preview.map(sanitizeLead)
+
+      for (let i = 0; i < sanitized.length; i += BATCH) {
+        const batch = sanitized.slice(i, i + BATCH)
         const { error } = await supabase.from('leads').insert(batch)
-        if (error) throw error
+        if (error) {
+          console.error('Supabase error:', error)
+          throw new Error(`${error.message}${error.details ? ' — ' + error.details : ''}${error.hint ? ' — ' + error.hint : ''}`)
+        }
         imported += batch.length
+        setProgress(Math.round(imported / sanitized.length * 100))
       }
       setResult(r => ({ ...r, imported }))
       setStatus('done')
@@ -53,6 +89,7 @@ export default function ImportPage() {
     setStatus('idle')
     setPreview([])
     setErrorMsg('')
+    setProgress(0)
     if (fileRef.current) fileRef.current.value = ''
   }
 
@@ -159,8 +196,15 @@ export default function ImportPage() {
 
         {/* Importing */}
         {status === 'importing' && (
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-12 text-center">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-12 text-center space-y-4">
             <p className="text-zinc-400 text-sm">Importando leads...</p>
+            <div className="w-full bg-zinc-800 rounded-full h-1.5 overflow-hidden">
+              <div
+                className="h-full bg-green-500 rounded-full transition-all duration-300"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <p className="text-xs text-zinc-600">{progress}%</p>
           </div>
         )}
 
@@ -181,8 +225,10 @@ export default function ImportPage() {
         {/* Error */}
         {status === 'error' && (
           <div className="bg-zinc-900 border border-red-900/50 rounded-xl p-8 text-center">
-            <p className="text-red-400 text-sm font-medium mb-1">Error al importar</p>
-            <p className="text-zinc-600 text-xs">{errorMsg}</p>
+            <p className="text-red-400 text-sm font-medium mb-2">Error al importar</p>
+            <p className="text-zinc-500 text-xs font-mono bg-zinc-950 rounded-lg p-3 text-left whitespace-pre-wrap break-all">
+              {errorMsg}
+            </p>
             <button
               onClick={reset}
               className="mt-6 text-sm px-4 py-2 border border-zinc-800 rounded-lg text-zinc-500 hover:text-zinc-200 transition-colors"

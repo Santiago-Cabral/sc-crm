@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/client'
-import type { Lead, LeadFilters, PipelineStage } from '@/types/lead.types'
+import type { Lead, LeadAIAnalysis, LeadFilters, PipelineStage } from '@/types/lead.types'
 
 export async function fetchLeads(filters: LeadFilters = {}): Promise<Lead[]> {
   const supabase = createClient()
@@ -80,4 +80,28 @@ export async function deleteLead(id: string): Promise<void> {
     .update({ deleted_at: new Date().toISOString() })
     .eq('id', id)
   if (error) throw error
+}
+export async function analyzeLeadWithAI(lead: Lead): Promise<LeadAIAnalysis> {
+  const res = await fetch('/api/analyze-lead', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lead }),
+  })
+  if (!res.ok) {
+    const err = await res.json()
+    throw new Error(err.error || 'Error en análisis IA')
+  }
+  const { analysis } = await res.json()
+
+  // Persistir en Supabase
+  await updateLead(lead.id, {
+    ai_analysis: analysis,
+    temperatura: analysis.calificacion,
+    ai_score: analysis.score,
+    mensaje_d1: analysis.mensaje_d1,
+    mensaje_d3: analysis.mensaje_d3,
+    mensaje_d7: analysis.mensaje_d7,
+  })
+
+  return analysis
 }

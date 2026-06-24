@@ -6,6 +6,7 @@ import {
   updateLead,
   updateLeadStage,
   deleteLead,
+  analyzeLeadWithAI,
 } from './leads.service'
 import type { Lead, LeadFilters, PipelineStage } from '@/types/lead.types'
 
@@ -67,6 +68,13 @@ export function useDeleteLead() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => deleteLead(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [LEADS_KEY] }),
+  })
+}
+export function useAnalyzeLead() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (lead: Lead) => analyzeLeadWithAI(lead),
     onSuccess: () => qc.invalidateQueries({ queryKey: [LEADS_KEY] }),
   })
 }
