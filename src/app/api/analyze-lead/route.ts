@@ -11,10 +11,17 @@ const openai = new OpenAI({
   },
 })
 
-// Modelos en orden de preferencia — el primero que responda gana
+// Modelos en orden de preferencia — el primero que responda gana.
+// Todos gratuitos ($0 prompt / $0 completion). SOLO gratis, nada de pago.
+// 'openrouter/free' es un router automático que OpenRouter mantiene
+// apuntando siempre a un modelo gratis disponible en ese momento —
+// esto evita que se rompa todo cuando un provider saca un slug puntual
+// del tier free (como pasó con gpt-oss-120b:free y qwen3-coder:free).
 const MODELS = [
-  'openai/gpt-oss-120b:free',
-  'qwen/qwen3-coder:free',
+  'openrouter/free',
+  'openai/gpt-oss-20b:free',
+  'z-ai/glm-4.5-air:free',
+  'nvidia/nemotron-3-super-120b-a12b:free',
 ]
 
 const SYSTEM_PROMPT = `
@@ -248,7 +255,9 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-// Llamada con fallback automático entre modelos
+// Llamada con fallback automático entre modelos gratis.
+// Si un modelo fue discontinuado del tier free (404) o da cualquier
+// error que no sea 429, pasa directo al siguiente sin esperar.
 async function callWithFallback(lead: Lead): Promise<string> {
   let lastError: unknown
 
@@ -278,6 +287,12 @@ async function callWithFallback(lead: Lead): Promise<string> {
 
       console.warn(`[AI] Error con ${model}:`, message)
 
+      // 404 = el modelo ya no existe / se lo sacaron del tier free.
+      // No tiene sentido esperar, directo al siguiente de la lista.
+      if (status === 404 || message.includes('unavailable for free')) {
+        continue
+      }
+
       if (status === 429 || message.includes('429') || message.includes('rate')) {
         // Leer retry-after del header o usar 35s por defecto
         const retryAfter =
@@ -292,7 +307,7 @@ async function callWithFallback(lead: Lead): Promise<string> {
     }
   }
 
-  throw lastError ?? new Error('Ningún modelo disponible')
+  throw lastError ?? new Error('Ningún modelo gratuito disponible en este momento')
 }
 
 export async function POST(req: NextRequest) {

@@ -16,8 +16,11 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="es" className="dark">
-      <body className={`${geist.className} bg-zinc-950 text-zinc-100 antialiased`}>
+    <html lang="es" className="dark" suppressHydrationWarning>
+      <body
+        className={`${geist.className} bg-zinc-950 text-zinc-100 antialiased`}
+        suppressHydrationWarning
+      >
         <Providers>
           {children}
         </Providers>
