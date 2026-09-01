@@ -1,7 +1,9 @@
 'use client'
+import { useState } from 'react'
 import { Header } from '@/components/layout/Header'
 import { LeadCard } from '@/components/leads/LeadCard'
 import { LeadDetailPanel } from '@/components/leads/LeadDetailPanel'
+import { NewLeadDialog } from '@/components/leads/NewLeadDialog'
 import { useLeads, useLead } from '@/features/leads/leads.queries'
 import { useFiltersStore } from '@/store/filtersStore'
 import { useUIStore } from '@/store/uiStore'
@@ -14,12 +16,18 @@ export default function LeadsPage() {
   const { data: leads = [], isLoading, error } = useLeads(filters)
   const { selectedLeadId, selectLead } = useUIStore()
   const { data: selectedLead } = useLead(selectedLeadId ?? '')
+  const [newLeadOpen, setNewLeadOpen] = useState(false)
+
+  const ciudades = Array.from(
+    new Set(leads.map((l) => l.ciudad).filter((c): c is string => Boolean(c))),
+  ).sort()
 
   const hasActiveFilters = !!(
     filters.search ||
     filters.etapa ||
     filters.prioridad ||
     filters.temperatura ||
+    filters.ciudad ||
     filters.sin_web ||
     filters.seguimiento_hoy
   )
@@ -33,8 +41,8 @@ export default function LeadsPage() {
 
         <div className="flex-1 overflow-y-auto p-6">
 
-          {/* Search y filtros */}
-          <div className="flex gap-3 mb-4 flex-wrap">
+          {/* Header + acciones */}
+          <div className="flex items-center justify-between gap-3 mb-4">
             <input
               type="text"
               placeholder="Buscar por nombre, rubro, ciudad..."
@@ -42,6 +50,39 @@ export default function LeadsPage() {
               onChange={(e) => setFilter('search', e.target.value)}
               className="flex-1 min-w-60 bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 outline-none focus:border-zinc-600 transition-colors"
             />
+            <button
+              onClick={() => setNewLeadOpen(true)}
+              className="shrink-0 flex items-center gap-1.5 text-sm px-3 py-2 bg-green-500 hover:bg-green-400 text-black font-medium rounded-lg transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+              Nuevo lead
+            </button>
+          </div>
+
+          {/* Filtros */}
+          <div className="flex gap-3 mb-4 flex-wrap">
+            <select
+              value={filters.ciudad || ''}
+              onChange={(e) => setFilter('ciudad', (e.target.value as string) || undefined)}
+              className="min-w-28 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-400 outline-none cursor-pointer"
+            >
+              <option value="">Todas las ciudades</option>
+              {ciudades.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+            <select
+              value={filters.etapa || ''}
+              onChange={(e) => setFilter('etapa', (e.target.value as PipelineStage) || undefined)}
+              className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-400 outline-none cursor-pointer"
+            >
+              <option value="">Todas las etapas</option>
+              {(['nuevo','contactado','respondio','reunion','propuesta','negociacion','cerrado','perdido'] as PipelineStage[]).map(s => (
+                <option key={s} value={s}>{PIPELINE_STAGE_LABELS[s]}</option>
+              ))}
+            </select>
             <select
               value={filters.etapa || ''}
               onChange={(e) => setFilter('etapa', (e.target.value as PipelineStage) || undefined)}
@@ -122,7 +163,7 @@ export default function LeadsPage() {
             <div className="text-center py-20 text-zinc-600 text-sm">
               {hasActiveFilters
                 ? 'No hay leads que coincidan con los filtros.'
-                : 'No hay leads todavía. Importá desde CSV.'}
+                : 'No hay leads todavía. Agregá uno con "Nuevo lead" o importá desde CSV.'}
             </div>
           )}
 
@@ -153,6 +194,9 @@ export default function LeadsPage() {
           <LeadDetailPanel lead={selectedLead} />
         </div>
       )}
+
+      {/* Dialog nuevo lead */}
+      <NewLeadDialog open={newLeadOpen} onClose={() => setNewLeadOpen(false)} />
 
     </div>
   )

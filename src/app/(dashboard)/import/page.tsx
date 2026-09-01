@@ -15,6 +15,11 @@ const ALLOWED_FIELDS: (keyof Partial<Lead>)[] = [
   'ai_analysis', 'source', 'observaciones',
 ]
 
+// Normaliza el teléfono (solo dígitos) para comparar de forma confiable
+function normPhone(p: string): string {
+  return String(p || '').replace(/[^0-9]/g, '')
+}
+
 // Elimina campos undefined/null problemáticos y filtra solo lo que acepta Supabase
 function sanitizeLead(lead: Partial<Lead>): Partial<Lead> {
   const result: Partial<Lead> = {}
@@ -38,10 +43,73 @@ function sanitizeLead(lead: Partial<Lead>): Partial<Lead> {
 export default function ImportPage() {
   const [status, setStatus] = useState<Status>('idle')
   const [preview, setPreview] = useState<Partial<Lead>[]>([])
-  const [result, setResult] = useState({ imported: 0, skipped: 0, total: 0 })
+  const [result, setResult] = useState({ imported: 0, skipped: 0, total: 0, dupesRemoved: 0 })
   const [errorMsg, setErrorMsg] = useState('')
   const [progress, setProgress] = useState(0)
   const fileRef = useRef<HTMLInputElement>(null)
+
+  async function loadPreview(raw: string) {
+    try {
+      // 1) Parsear el CSV
+      const { leads, skipped } = parseCSV(raw)
+
+      // 2) Eliminar duplicados dentro del propio CSV
+      const seenInFile = new Set<string>()
+      const uniqueLeads = leads.filter((l) => {
+        const phone = (l.nombre || '').trim().toLowerCase()
+        const key = normPhone(l.telefono || '') || phone || l.web?.trim().toLowerCase() || ''
+        if (!key) return true
+        if (seenInFile.has(key)) return false
+        seenInFile.add(key)
+        return true
+      })
+      const dupesInFile = leads.length - uniqueLeads.length
+
+      // 3) Traer los leads ya existentes para comparar
+      const supabase = createClient()
+      const { data: existing, error } = await supabase
+        .from('leads')
+        .select('nombre, telefono, web')
+        .is('deleted_at', null)
+      if (error) throw error
+
+      const existingRows = existing ?? []
+      const existingPhones = new Set(existingRows.map((e) => normPhone(String(e.telefono ?? ''))))
+      const existingNames = new Set(existingRows.map((e) => String(e.nombre ?? '').trim().toLowerCase()))
+      const existingWebs = new Set(existingRows.map((e) => String(e.web ?? '').trim().toLowerCase()))
+
+      // 4) Filtrar leads que ya existen (por teléfono, web o nombre)
+      const newLeads: Partial<Lead>[] = []
+      let duplicates = 0
+      for (const l of uniqueLeads) {
+        const phone = normPhone(l.telefono || '')
+        const name = String(l.nombre || '').trim().toLowerCase()
+        const web = String(l.web || '').trim().toLowerCase()
+        const isDuplicate =
+          (phone && existingPhones.has(phone)) ||
+          (web && existingWebs.has(web)) ||
+          (name && existingNames.has(name))
+        if (isDuplicate) {
+          duplicates++
+        } else {
+          newLeads.push(l)
+        }
+      }
+
+      const totalRemoved = dupesInFile + duplicates
+      setPreview(newLeads)
+      setResult({
+        imported: 0,
+        skipped,
+        total: leads.length,
+        dupesRemoved: totalRemoved,
+      })
+      setStatus('preview')
+    } catch (e: any) {
+      setErrorMsg(e.message || 'Error al procesar el archivo')
+      setStatus('error')
+    }
+  }
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -49,10 +117,7 @@ export default function ImportPage() {
     const reader = new FileReader()
     reader.onload = (ev) => {
       const raw = ev.target?.result as string
-      const { leads, total, skipped } = parseCSV(raw)
-      setPreview(leads)
-      setResult({ imported: 0, skipped, total })
-      setStatus('preview')
+      loadPreview(raw)
     }
     reader.readAsText(file, 'UTF-8')
   }
@@ -128,7 +193,12 @@ export default function ImportPage() {
             <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex items-center justify-between">
               <div>
                 <p className="text-sm text-zinc-200 font-medium">{preview.length} leads listos para importar</p>
-                <p className="text-xs text-zinc-500 mt-0.5">{result.skipped} filas omitidas (sin nombre)</p>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  {result.skipped} filas omitidas (sin nombre)
+                  {result.dupesRemoved > 0 && (
+                    <span className="text-amber-400"> · {result.dupesRemoved} repetidos descartados</span>
+                  )}
+                </p>
               </div>
               <div className="flex gap-2">
                 <button
@@ -139,14 +209,26 @@ export default function ImportPage() {
                 </button>
                 <button
                   onClick={handleImport}
-                  className="text-sm px-4 py-2 bg-green-500 hover:bg-green-400 text-black font-medium rounded-lg transition-colors"
+                  disabled={preview.length === 0}
+                  className="text-sm px-4 py-2 bg-green-500 hover:bg-green-400 disabled:opacity-40 disabled:cursor-not-allowed text-black font-medium rounded-lg transition-colors"
                 >
                   Importar {preview.length} leads
                 </button>
               </div>
             </div>
 
-            {/* Tabla preview */}
+            {/* Caso: todos eran repetidos */}
+            {preview.length === 0 ? (
+              <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-10 text-center space-y-3">
+                <svg className="w-8 h-8 text-amber-500 mx-auto" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="text-sm text-zinc-200 font-medium">No hay leads nuevos para importar</p>
+                <p className="text-xs text-zinc-500">
+                  Todos los leads del archivo ya existen en la base ({result.dupesRemoved} descartados).
+                </p>
+              </div>
+            ) : (
             <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
@@ -191,6 +273,7 @@ export default function ImportPage() {
                 )}
               </div>
             </div>
+            )}
           </div>
         )}
 
@@ -213,6 +296,11 @@ export default function ImportPage() {
           <div className="bg-zinc-900 border border-green-900/50 rounded-xl p-8 text-center">
             <p className="text-green-400 text-lg font-medium mb-1">✓ Importación completada</p>
             <p className="text-zinc-500 text-sm">{result.imported} leads importados correctamente</p>
+            {result.dupesRemoved > 0 && (
+              <p className="text-xs text-amber-400 mt-1">
+                {result.dupesRemoved} repetidos descartados (ya existían)
+              </p>
+            )}
             <button
               onClick={reset}
               className="mt-6 text-sm px-4 py-2 border border-zinc-800 rounded-lg text-zinc-500 hover:text-zinc-200 transition-colors"
