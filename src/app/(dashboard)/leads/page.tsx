@@ -84,16 +84,6 @@ export default function LeadsPage() {
               ))}
             </select>
             <select
-              value={filters.etapa || ''}
-              onChange={(e) => setFilter('etapa', (e.target.value as PipelineStage) || undefined)}
-              className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-400 outline-none cursor-pointer"
-            >
-              <option value="">Todas las etapas</option>
-              {(['nuevo','contactado','respondio','reunion','propuesta','negociacion','cerrado','perdido'] as PipelineStage[]).map(s => (
-                <option key={s} value={s}>{PIPELINE_STAGE_LABELS[s]}</option>
-              ))}
-            </select>
-            <select
               value={filters.prioridad || ''}
               onChange={(e) => setFilter('prioridad', (e.target.value as LeadPriority) || undefined)}
               className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-400 outline-none cursor-pointer"

@@ -19,6 +19,11 @@ export interface LeadAIAnalysis {
   mensaje_d1: string
   mensaje_d3: string
   mensaje_d7: string
+  siguiente_paso?: string
+  cta_llamada?: string
+  objecion_precio?: string
+  objecion_pensar?: string
+  objecion_presupuesto?: string
 }
 
 export interface Lead {

@@ -8,7 +8,8 @@ import {
   deleteLead,
   analyzeLeadWithAI,
 } from './leads.service'
-import type { Lead, LeadFilters, PipelineStage } from '@/types/lead.types'
+import { fetchInteractions, recordMessageSent } from './interactions.service'
+import type { Lead, LeadFilters, PipelineStage, Interaction } from '@/types/lead.types'
 
 export const LEADS_KEY = 'leads'
 
@@ -78,3 +79,23 @@ export function useAnalyzeLead() {
     onSuccess: () => qc.invalidateQueries({ queryKey: [LEADS_KEY] }),
   })
 }
+
+export function useInteractions(leadId: string) {
+  return useQuery({
+    queryKey: [LEADS_KEY, leadId, 'interactions'],
+    queryFn: () => fetchInteractions(leadId),
+    enabled: !!leadId,
+  })
+}
+
+export function useRecordMessageSent() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (params: Parameters<typeof recordMessageSent>[0]) => recordMessageSent(params),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [LEADS_KEY] })
+    },
+  })
+}
+
+export type { Interaction }

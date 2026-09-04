@@ -201,6 +201,24 @@ export default function DashboardPage() {
   ).length
   const weeklyChange = leadsLastWeek > 0 ? Math.round(((leadsThisWeek - leadsLastWeek) / leadsLastWeek) * 100) : null
 
+  // Volumen de prospección (Cardone): contactados esta semana según fecha de
+  // último contacto, cuántos respondieron y cuántos llegaron a reunión.
+  const contactadosEstaSemana = leads.filter(
+    (l) => l.fecha_ultimo_contacto && new Date(l.fecha_ultimo_contacto) >= weekStart,
+  ).length
+  const contactadosUltimaSemana = leads.filter(
+    (l) =>
+      l.fecha_ultimo_contacto &&
+      new Date(l.fecha_ultimo_contacto) >= lastWeekStart &&
+      new Date(l.fecha_ultimo_contacto) < weekStart,
+  ).length
+  const prospeccionChange =
+    contactadosUltimaSemana > 0
+      ? Math.round(((contactadosEstaSemana - contactadosUltimaSemana) / contactadosUltimaSemana) * 100)
+      : null
+  const respondidos = leads.filter((l) => l.etapa === 'respondio').length
+  const enReunion = leads.filter((l) => l.etapa === 'reunion').length
+
   const activeLeads = leads.filter((l) => l.etapa !== 'cerrado' && l.etapa !== 'perdido')
   const potencialLeads = leads.filter((l) => l.etapa !== 'cerrado' && l.etapa !== 'perdido' && l.etapa !== 'nuevo')
   const conversionRate = leads.length > 0 ? Math.round((leads.filter((l) => l.etapa === 'cerrado').length / leads.length) * 100) : 0
@@ -281,7 +299,7 @@ export default function DashboardPage() {
 
         <div className="p-6 space-y-5">
           {/* ─── KPI Row ─── */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
             <SectionCard className="!p-0">
               <div className="p-4">
                 <div className="flex items-center justify-between mb-3">
@@ -385,6 +403,37 @@ export default function DashboardPage() {
                 </p>
                 <p className="text-[11px] text-zinc-600 mt-2">
                   {potencialLeads.length} en progreso
+                </p>
+              </div>
+            </SectionCard>
+
+            <SectionCard className="!p-0">
+              <div className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider">
+                    Prospección
+                  </span>
+                  <svg className="w-4 h-4 text-amber-500/60" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5M9 11.25v1.5M12 9v3.75m3-6.75V10.5" />
+                  </svg>
+                </div>
+                <div className="flex items-end gap-2">
+                  <p className="text-3xl font-bold text-amber-400 tabular-nums tracking-tight">
+                    {contactadosEstaSemana}
+                  </p>
+                  {prospeccionChange !== null && (
+                    <span
+                      className={cn(
+                        'text-xs font-medium pb-1',
+                        prospeccionChange >= 0 ? 'text-emerald-400' : 'text-red-400',
+                      )}
+                    >
+                      {prospeccionChange >= 0 ? '↑' : '↓'} {Math.abs(prospeccionChange)}%
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-zinc-600 mt-2">
+                  contactados esta semana · {respondidos} respondieron · {enReunion} en reunión
                 </p>
               </div>
             </SectionCard>

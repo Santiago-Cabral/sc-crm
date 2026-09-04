@@ -2,9 +2,10 @@
 import { useState } from 'react'
 import type { Lead, PipelineStage } from '@/types/lead.types'
 import { PIPELINE_STAGES, PIPELINE_STAGE_LABELS, PIPELINE_STAGE_COLORS } from '@/types/pipeline.types'
-import { useUpdateLead, useUpdateLeadStage, useDeleteLead, useAnalyzeLead } from '@/features/leads/leads.queries'
+import { useUpdateLead, useUpdateLeadStage, useDeleteLead, useAnalyzeLead, useInteractions, useRecordMessageSent } from '@/features/leads/leads.queries'
 import { useUIStore } from '@/store/uiStore'
 import { cn } from '@/lib/utils'
+import type { Interaction } from '@/types/lead.types'
 
 function normalizePhone(p: string): string {
   let s = String(p).replace(/[\s\-\(\)\+\.]/g, '').replace(/\.0+$/, '')
@@ -80,6 +81,38 @@ export function LeadDetailPanel({ lead }: Props) {
   const d1msg = lead.mensaje_d1 || lead.ai_analysis?.mensaje_d1 || ''
   const d3msg = lead.mensaje_d3 || lead.ai_analysis?.mensaje_d3 || ''
   const d7msg = lead.mensaje_d7 || lead.ai_analysis?.mensaje_d7 || ''
+  const nextStep = lead.ai_analysis?.siguiente_paso || ''
+  const ctaCall = lead.ai_analysis?.cta_llamada || ''
+  const objPrecio = lead.ai_analysis?.objecion_precio || ''
+  const objPensar = lead.ai_analysis?.objecion_pensar || ''
+  const objPresupuesto = lead.ai_analysis?.objecion_presupuesto || ''
+
+  const { data: interactions = [] } = useInteractions(lead.id)
+  const { mutate: recordSent, isPending: recording } = useRecordMessageSent()
+
+  // Rastreador de secuencia D1/D3/D7: qué mensajes de captación ya se enviaron.
+  const sentTypes = new Set(interactions.map((i) => i.mensaje_tipo).filter(Boolean) as Interaction['mensaje_tipo'][])
+  const nextMsg: 'd1' | 'd3' | 'd7' | null = !sentTypes.has('d1')
+    ? 'd1'
+    : !sentTypes.has('d3')
+      ? 'd3'
+      : !sentTypes.has('d7')
+        ? 'd7'
+        : null
+
+  const nextMsgText =
+    nextMsg === 'd1' ? d1msg : nextMsg === 'd3' ? d3msg : nextMsg === 'd7' ? d7msg : ''
+
+  function handleRecordSent() {
+    if (!nextMsg || !nextMsgText || !phone) return
+    recordSent({
+      leadId: lead.id,
+      mensajeTipo: nextMsg,
+      waLink: `https://wa.me/${phone}?text=${encodeURIComponent(nextMsgText)}`,
+      etapaAnterior: lead.etapa,
+      fechaPrimerContacto: lead.fecha_primer_contacto,
+    })
+  }
 
   function handleStageChange(etapa: PipelineStage) {
     updateStage({ id: lead.id, etapa })
@@ -162,6 +195,47 @@ export function LeadDetailPanel({ lead }: Props) {
           </div>
         </div>
 
+        {/* Rastreador de secuencia de captación */}
+        {(d1msg || d3msg || d7msg) && (
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide">Secuencia de captación</p>
+            <div className="flex gap-1.5">
+              {(['d1', 'd3', 'd7'] as const).map((tipo) => {
+                const label = tipo === 'd1' ? 'Día 1' : tipo === 'd3' ? 'Día 3' : 'Día 7'
+                const done = sentTypes.has(tipo)
+                const current = nextMsg === tipo
+                return (
+                  <span
+                    key={tipo}
+                    className={cn(
+                      'text-[11px] font-medium px-2.5 py-1 rounded-full border transition-colors',
+                      done
+                        ? 'text-emerald-400 bg-emerald-950/40 border-emerald-900/50'
+                        : current
+                          ? 'text-amber-400 bg-amber-950/40 border-amber-800/60 animate-pulse'
+                          : 'text-zinc-600 bg-zinc-900 border-zinc-800',
+                    )}
+                  >
+                    {done ? '✓' : current ? '▶' : ''} {label} {sentTypes.has(tipo) ? 'enviado' : ''}
+                  </span>
+                )
+              })}
+            </div>
+            {nextMsg && nextMsgText && phone && (
+              <button
+                onClick={handleRecordSent}
+                disabled={recording}
+                className="w-full text-xs py-2 bg-amber-600/20 hover:bg-amber-600/30 disabled:opacity-50 text-amber-300 border border-amber-800/50 rounded-lg transition-colors"
+              >
+                {recording ? '⏳ Registrando...' : `✓ Marcar ${nextMsg === 'd1' ? 'Día 1' : nextMsg === 'd3' ? 'Día 3' : 'Día 7'} como enviado`}
+              </button>
+            )}
+            {!nextMsg && (
+              <p className="text-[11px] text-emerald-400">Secuencia de captación completa. Seguí con el escalado.</p>
+            )}
+          </div>
+        )}
+
         {/* Datos de contacto */}
         <div className="space-y-2">
           <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide">Contacto</p>
@@ -213,6 +287,12 @@ export function LeadDetailPanel({ lead }: Props) {
               {lead.ai_analysis.servicio_recomendado && (
                 <p className="text-xs text-green-400">→ {lead.ai_analysis.servicio_recomendado}</p>
               )}
+              {nextStep && (
+                <div className="pt-1.5 mt-1.5 border-t border-zinc-800">
+                  <p className="text-[10px] font-semibold text-amber-400 uppercase tracking-wide mb-1">Siguiente paso</p>
+                  <p className="text-xs text-amber-200/90 leading-relaxed">{nextStep}</p>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -220,7 +300,7 @@ export function LeadDetailPanel({ lead }: Props) {
         {/* Mensajes */}
         {(d1msg || d3msg || d7msg) && (
           <div className="space-y-2">
-            <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide">Mensajes</p>
+            <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide">Mensajes de captación</p>
             <div className="space-y-2">
               {d1msg && (
                 <MessageBlock
@@ -241,6 +321,43 @@ export function LeadDetailPanel({ lead }: Props) {
                   label="Día 7 — Último seguimiento"
                   message={d7msg}
                   waLink={phone ? `https://wa.me/${phone}?text=${encodeURIComponent(d7msg)}` : undefined}
+                />
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Fase 2 — Escalado y cierre */}
+        {(ctaCall || objPrecio || objPensar || objPresupuesto) && (
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide">Escalado y cierre</p>
+            <div className="space-y-2">
+              {ctaCall && (
+                <MessageBlock
+                  label="Agendar la llamada/consulta"
+                  message={ctaCall}
+                  waLink={phone ? `https://wa.me/${phone}?text=${encodeURIComponent(ctaCall)}` : undefined}
+                />
+              )}
+              {objPrecio && (
+                <MessageBlock
+                  label="Objeción · está caro"
+                  message={objPrecio}
+                  waLink={phone ? `https://wa.me/${phone}?text=${encodeURIComponent(objPrecio)}` : undefined}
+                />
+              )}
+              {objPensar && (
+                <MessageBlock
+                  label="Objeción · lo tengo que pensar"
+                  message={objPensar}
+                  waLink={phone ? `https://wa.me/${phone}?text=${encodeURIComponent(objPensar)}` : undefined}
+                />
+              )}
+              {objPresupuesto && (
+                <MessageBlock
+                  label="Objeción · no tengo presupuesto / ahora no"
+                  message={objPresupuesto}
+                  waLink={phone ? `https://wa.me/${phone}?text=${encodeURIComponent(objPresupuesto)}` : undefined}
                 />
               )}
             </div>
