@@ -63,6 +63,8 @@ El análisis con IA sigue un método de venta consultivo aplicando las escuelas 
 - `siguiente_paso`: acción concreta y accionable para Santiago.
 - Prueba social con casos reales (Sermetal, Forrajería Jovita, TenisTuc, Cabral's Barbería) según el rubro del prospecto.
 
+**Oferta completa de SC Softwares** (consultoría IT + desarrollo): consultoría/diagnóstico IT, posicionamiento web y SEO, mejora del perfil de Google Business, automatización de procesos, CRM, ERP, sistemas de gestión, puntos de venta (POS), apps móviles, integración de IA, páginas web y ecommerce. La IA recomienda el servicio más adecuado por lead (ej. empezar por mejorar presencia/Google si el negocio no tiene web o su perfil está descuidado).
+
 ## Rastreador de secuencia y registro de mensajes
 
 El sistema rastrea la secuencia de captación D1 → D3 → D7 usando la tabla `interactions` (ya tipada en el proyecto):
