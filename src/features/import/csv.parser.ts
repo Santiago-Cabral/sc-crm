@@ -1,4 +1,5 @@
 import type { Lead, LeadPriority } from '@/types/lead.types'
+import { normalizeCiudad } from '@/lib/ciudades'
 
 const COLUMN_MAP: Record<string, string[]> = {
   nombre:     ['nombre', 'razon social', 'empresa', 'cliente', 'name'],
@@ -170,7 +171,7 @@ export function parseCSV(raw: string): ParseResult {
       web:        get(row, 'web') || null,
       rating,
       rubro:      get(row, 'rubro') || null,
-      ciudad:     get(row, 'ciudad') || 'Tucumán',
+      ciudad:     normalizeCiudad(get(row, 'ciudad')) || 'Tucumán',
       prioridad,
       mensaje_d1: get(row, 'mensaje_d1') || ai?.mensaje_d1 || ai?.whatsapp || null,
       mensaje_d3: get(row, 'mensaje_d3') || ai?.mensaje_d3 || null,

@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/client'
 import type { Lead, LeadAIAnalysis, LeadFilters, PipelineStage } from '@/types/lead.types'
+import { ciudadSearchTerms } from '@/lib/ciudades'
 
 export async function fetchLeads(filters: LeadFilters = {}): Promise<Lead[]> {
   const supabase = createClient()
@@ -18,7 +19,10 @@ export async function fetchLeads(filters: LeadFilters = {}): Promise<Lead[]> {
   if (filters.prioridad)   query = query.eq('prioridad', filters.prioridad)
   if (filters.temperatura) query = query.eq('temperatura', filters.temperatura)
   if (filters.rubro)       query = query.ilike('rubro', `%${filters.rubro}%`)
-  if (filters.ciudad)      query = query.ilike('ciudad', `%${filters.ciudad}%`)
+  if (filters.ciudad) {
+    const terms = ciudadSearchTerms(filters.ciudad)
+    query = query.or(terms.map((t) => `ciudad.ilike.%${t}%`).join(','))
+  }
   if (filters.sin_web)     query = query.eq('tiene_web', false)
   if (filters.seguimiento_hoy) {
     query = query.lte('next_follow_up', new Date().toISOString().split('T')[0])

@@ -5,6 +5,7 @@ import { useLeads } from '@/features/leads/leads.queries'
 import { useFiltersStore } from '@/store/filtersStore'
 import { useUIStore } from '@/store/uiStore'
 import { PIPELINE_STAGE_LABELS } from '@/types/pipeline.types'
+import { normalizeCiudad } from '@/lib/ciudades'
 import type { PipelineStage, LeadTemperature } from '@/types/lead.types'
 import { cn } from '@/lib/utils'
 
@@ -259,7 +260,7 @@ export default function DashboardPage() {
   const topRubros = Object.entries(groupBy(leads, (l) => l.rubro || 'Sin rubro'))
     .sort((a, b) => b[1].length - a[1].length)
     .slice(0, 6)
-  const topCiudades = Object.entries(groupBy(leads, (l) => l.ciudad || 'Sin ciudad'))
+  const topCiudades = Object.entries(groupBy(leads, (l) => normalizeCiudad(l.ciudad) || 'Sin ciudad'))
     .sort((a, b) => b[1].length - a[1].length)
     .slice(0, 5)
   const topSources = Object.entries(groupBy(leads, (l) => l.source || 'Desconocido'))

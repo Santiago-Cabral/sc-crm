@@ -5,6 +5,7 @@ import { PIPELINE_STAGES, PIPELINE_STAGE_LABELS, PIPELINE_STAGE_COLORS } from '@
 import { useUpdateLead, useUpdateLeadStage, useDeleteLead, useAnalyzeLead, useInteractions, useRecordMessageSent, useAddNote } from '@/features/leads/leads.queries'
 import { useUIStore } from '@/store/uiStore'
 import { cn } from '@/lib/utils'
+import { ZONAS, normalizeCiudad } from '@/lib/ciudades'
 import { StarRating } from './StarRating'
 import type { Interaction } from '@/types/lead.types'
 
@@ -165,7 +166,7 @@ export function LeadDetailPanel({ lead }: Props) {
       telefono: lead.telefono ?? '',
       web: lead.web ?? '',
       rubro: lead.rubro ?? '',
-      ciudad: lead.ciudad ?? '',
+      ciudad: normalizeCiudad(lead.ciudad) || lead.ciudad,
       direccion: lead.direccion ?? '',
       prioridad: lead.prioridad,
       observaciones: lead.observaciones ?? '',
@@ -224,7 +225,7 @@ export function LeadDetailPanel({ lead }: Props) {
         <div className="min-w-0 flex-1">
           <h2 className="text-sm font-semibold text-zinc-100 leading-snug">{lead.nombre}</h2>
           <p className="text-xs text-zinc-500 mt-0.5 uppercase tracking-wide">
-            {lead.rubro || '—'} · {lead.ciudad}
+            {lead.rubro || '—'} · {normalizeCiudad(lead.ciudad) || lead.ciudad}
           </p>
         </div>
         <button
@@ -425,12 +426,18 @@ export function LeadDetailPanel({ lead }: Props) {
                 </div>
                 <div className="space-y-1">
                   <label className={labelCls}>Ciudad</label>
-                  <input
+                  <select
                     className={inputCls}
-                    placeholder="Ej: Tucumán"
                     value={editForm.ciudad}
                     onChange={(e) => setEdit('ciudad', e.target.value)}
-                  />
+                  >
+                    {editForm.ciudad && !(ZONAS as readonly string[]).includes(editForm.ciudad) && (
+                      <option value={editForm.ciudad}>{editForm.ciudad}</option>
+                    )}
+                    {ZONAS.map((z) => (
+                      <option key={z} value={z}>{z}</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="space-y-1 col-span-2">
                   <label className={labelCls}>Dirección</label>

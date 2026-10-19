@@ -1,6 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useCreateLead } from '@/features/leads/leads.queries'
+import { ZONAS } from '@/lib/ciudades'
 import type { Lead, LeadPriority } from '@/types/lead.types'
 
 interface FormState {
@@ -20,7 +21,7 @@ const EMPTY: FormState = {
   web: '',
   rating: '',
   rubro: '',
-  ciudad: '',
+  ciudad: 'Tucumán',
   prioridad: 'media',
   observaciones: '',
 }
@@ -71,7 +72,7 @@ export function NewLeadDialog({
 
     if (form.rating.trim() !== '') {
       const n = parseFloat(form.rating.replace(',', '.'))
-      if (!isNaN(n)) payload.rating = Math.min(Math.max(Math.round(n * 10) / 10, 0), 10)
+      if (!isNaN(n)) payload.rating = Math.min(Math.max(Math.round(n * 10) / 10, 0), 5)
     }
 
     createLead(payload, {
@@ -161,12 +162,15 @@ export function NewLeadDialog({
             </div>
             <div className="space-y-1.5">
               <label className={labelCls}>Ciudad</label>
-              <input
+              <select
                 className={inputCls}
-                placeholder="Ej: Tucumán"
                 value={form.ciudad}
                 onChange={(e) => set('ciudad', e.target.value)}
-              />
+              >
+                {ZONAS.map((z) => (
+                  <option key={z} value={z}>{z}</option>
+                ))}
+              </select>
             </div>
           </div>
 

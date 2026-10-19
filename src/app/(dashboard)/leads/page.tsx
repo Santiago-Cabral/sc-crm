@@ -9,6 +9,7 @@ import { useFiltersStore } from '@/store/filtersStore'
 import { useUIStore } from '@/store/uiStore'
 import { cn } from '@/lib/utils'
 import { PIPELINE_STAGE_LABELS } from '@/types/pipeline.types'
+import { zonasPresentes } from '@/lib/ciudades'
 import type { PipelineStage, LeadPriority, LeadTemperature } from '@/types/lead.types'
 
 export default function LeadsPage() {
@@ -18,9 +19,7 @@ export default function LeadsPage() {
   const { data: selectedLead } = useLead(selectedLeadId ?? '')
   const [newLeadOpen, setNewLeadOpen] = useState(false)
 
-  const ciudades = Array.from(
-    new Set(leads.map((l) => l.ciudad).filter((c): c is string => Boolean(c))),
-  ).sort()
+  const ciudades = zonasPresentes(leads.map((l) => l.ciudad))
 
   const hasActiveFilters = !!(
     filters.search ||
