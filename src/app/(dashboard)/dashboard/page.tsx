@@ -1,8 +1,11 @@
 'use client'
+import { useRouter } from 'next/navigation'
 import { Header } from '@/components/layout/Header'
 import { useLeads } from '@/features/leads/leads.queries'
+import { useFiltersStore } from '@/store/filtersStore'
+import { useUIStore } from '@/store/uiStore'
 import { PIPELINE_STAGE_LABELS } from '@/types/pipeline.types'
-import type { Lead, PipelineStage, LeadTemperature } from '@/types/lead.types'
+import type { PipelineStage, LeadTemperature } from '@/types/lead.types'
 import { cn } from '@/lib/utils'
 
 /* ─── helpers ─── */
@@ -30,15 +33,24 @@ function SectionCard({
   title,
   subtitle,
   action,
+  onClick,
 }: {
   children: React.ReactNode
   className?: string
   title?: string
   subtitle?: string
   action?: React.ReactNode
+  onClick?: () => void
 }) {
   return (
-    <div className={cn('bg-zinc-900 border border-zinc-800/80 rounded-2xl', className)}>
+    <div
+      onClick={onClick}
+      className={cn(
+        'bg-zinc-900 border border-zinc-800/80 rounded-2xl',
+        onClick && 'cursor-pointer hover:border-zinc-700 transition-colors',
+        className,
+      )}
+    >
       {(title || action) && (
         <div className="flex items-center justify-between px-5 pt-5 pb-2">
           <div>
@@ -188,6 +200,22 @@ const TEMP_CONFIG: Record<LeadTemperature, { color: string; bgColor: string; ico
 /* ─── Main Page ─── */
 export default function DashboardPage() {
   const { data: leads = [], isLoading } = useLeads()
+  const router = useRouter()
+  const { setFilter, resetFilters } = useFiltersStore()
+  const { selectLead } = useUIStore()
+
+  // Abrir el lead en la página de Leads con el panel de detalle.
+  function openLead(id: string) {
+    selectLead(id)
+    router.push('/leads')
+  }
+
+  // Ir a Leads aplicando un filtro limpio (para los accesos desde el dashboard).
+  function goFiltered(apply: () => void) {
+    resetFilters()
+    apply()
+    router.push('/leads')
+  }
 
   const today = new Date()
   const todayStr = today.toISOString().split('T')[0]
@@ -259,6 +287,26 @@ export default function DashboardPage() {
 
   const recientes = [...leads].sort((a, b) => (a.created_at > b.created_at ? -1 : 1)).slice(0, 5)
 
+  // Actividad de las últimas 8 semanas (leads nuevos por semana).
+  const weeklyActivity = Array.from({ length: 8 }, (_, i) => {
+    const start = new Date(weekStart.getTime() - (7 - i) * 7 * 86400000)
+    const end = new Date(start.getTime() + 7 * 86400000)
+    const count = leads.filter((l) => {
+      const d = new Date(l.created_at)
+      return d >= start && d < end
+    }).length
+    return { start, count, label: `${start.getDate()}/${start.getMonth() + 1}` }
+  })
+  const maxWeekly = Math.max(...weeklyActivity.map((w) => w.count), 1)
+
+  // Completitud de datos: cuántos leads tienen cargado cada campo clave.
+  const campos = [
+    { label: 'Teléfono', count: leads.filter((l) => !!l.telefono).length, color: 'bg-emerald-500' },
+    { label: 'Rating', count: leads.filter((l) => l.rating != null).length, color: 'bg-amber-500' },
+    { label: 'Rubro', count: leads.filter((l) => !!l.rubro).length, color: 'bg-blue-500' },
+    { label: 'Sitio web', count: leadsConWeb, color: 'bg-violet-500' },
+  ]
+
   const hoyLocal = today.toLocaleDateString('es-AR', {
     weekday: 'long',
     day: 'numeric',
@@ -290,17 +338,23 @@ export default function DashboardPage() {
             <h2 className="text-lg font-semibold text-zinc-100">Resumen general</h2>
             <p className="text-xs text-zinc-500 capitalize">{hoyLocal}</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <span className="text-xs text-zinc-600">
               {leads.length} leads en total
             </span>
+            <button
+              onClick={() => router.push('/leads')}
+              className="text-xs px-3 py-1.5 border border-zinc-800 rounded-lg text-zinc-400 hover:text-zinc-200 hover:border-zinc-600 transition-colors"
+            >
+              Ver leads →
+            </button>
           </div>
         </div>
 
         <div className="p-6 space-y-5">
           {/* ─── KPI Row ─── */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
-            <SectionCard className="!p-0">
+            <SectionCard className="!p-0" onClick={() => router.push('/leads')}>
               <div className="p-4">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider">
@@ -350,7 +404,7 @@ export default function DashboardPage() {
               </div>
             </SectionCard>
 
-            <SectionCard className="!p-0">
+            <SectionCard className="!p-0" onClick={() => goFiltered(() => setFilter('etapa', 'cerrado'))}>
               <div className="p-4">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider">
@@ -438,7 +492,7 @@ export default function DashboardPage() {
               </div>
             </SectionCard>
 
-            <SectionCard className="!p-0">
+            <SectionCard className="!p-0" onClick={() => goFiltered(() => setFilter('sin_web', true))}>
               <div className="p-4">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider">
@@ -467,7 +521,12 @@ export default function DashboardPage() {
               ) : (
                 <div className="space-y-3 mt-1">
                   {byStage.map(({ stage, count, pct }) => (
-                    <div key={stage} className="flex items-center gap-3">
+                    <div
+                      key={stage}
+                      onClick={() => goFiltered(() => setFilter('etapa', stage))}
+                      title={`Ver leads en ${PIPELINE_STAGE_LABELS[stage]}`}
+                      className="flex items-center gap-3 -mx-2 px-2 py-1 rounded-lg cursor-pointer hover:bg-zinc-800/50 transition-colors"
+                    >
                       <span className="text-xs text-zinc-400 w-28 shrink-0 truncate">
                         {PIPELINE_STAGE_LABELS[stage]}
                       </span>
@@ -509,7 +568,12 @@ export default function DashboardPage() {
 
                   {/* Legend */}
                   {byTemp.map(({ temp, count, pct }) => (
-                    <div key={temp} className="flex items-center justify-between">
+                    <div
+                      key={temp}
+                      onClick={() => goFiltered(() => setFilter('temperatura', temp))}
+                      title={`Ver leads ${TEMP_CONFIG[temp].label.toLowerCase()}`}
+                      className="flex items-center justify-between -mx-2 px-2 py-1 rounded-lg cursor-pointer hover:bg-zinc-800/50 transition-colors"
+                    >
                       <div className="flex items-center gap-2.5">
                         <div className={cn('w-2 h-2 rounded-full', TEMP_CONFIG[temp].bgColor)} />
                         <span className="text-xs text-zinc-400">
@@ -537,7 +601,68 @@ export default function DashboardPage() {
             </SectionCard>
           </div>
 
-          {/* ─── Row 3: Rubros + Ciudades + Fuentes ─── */}
+          {/* ─── Row 3: Actividad semanal + Completitud de datos ─── */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+            {/* Actividad semanal */}
+            <SectionCard
+              title="Actividad semanal"
+              subtitle="Leads nuevos por semana (últimas 8)"
+              className="lg:col-span-2"
+            >
+              {leads.length === 0 ? (
+                <Empty />
+              ) : (
+                <div className="flex items-end gap-2 h-32 mt-2">
+                  {weeklyActivity.map((w, i) => (
+                    <div
+                      key={i}
+                      className="flex-1 flex flex-col items-center gap-1"
+                      title={`Semana del ${w.label}: ${w.count} leads`}
+                    >
+                      <span className="text-[10px] text-zinc-500 tabular-nums">{w.count}</span>
+                      <div
+                        className={cn(
+                          'w-full rounded-t-md transition-all duration-500',
+                          w.count > 0 ? 'bg-blue-500/70 hover:bg-blue-400' : 'bg-zinc-800',
+                        )}
+                        style={{ height: `${Math.max(4, (w.count / maxWeekly) * 96)}px` }}
+                      />
+                      <span className="text-[9px] text-zinc-600">{w.label}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </SectionCard>
+
+            {/* Completitud de datos */}
+            <SectionCard title="Datos completos" subtitle="Campos cargados en tus leads">
+              {leads.length === 0 ? (
+                <Empty />
+              ) : (
+                <div className="space-y-3.5 mt-1">
+                  {campos.map(({ label, count, color }) => {
+                    const pct = Math.round((count / leads.length) * 100)
+                    return (
+                      <div key={label} className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-zinc-400">{label}</span>
+                          <span className="text-[11px] text-zinc-600 tabular-nums">
+                            {count}/{leads.length} · {pct}%
+                          </span>
+                        </div>
+                        <MiniBar value={count} max={leads.length} color={color} />
+                      </div>
+                    )
+                  })}
+                  <p className="text-[11px] text-zinc-600 pt-1 border-t border-zinc-800/60">
+                    Completá los datos faltantes abriendo cada lead.
+                  </p>
+                </div>
+              )}
+            </SectionCard>
+          </div>
+
+          {/* ─── Row 4: Rubros + Ciudades + Fuentes ─── */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             {/* Top rubros */}
             <SectionCard title="Rubros" subtitle="Top industrias">
@@ -621,7 +746,7 @@ export default function DashboardPage() {
             </SectionCard>
           </div>
 
-          {/* ─── Row 4: Últimos leads + Seguimiento ─── */}
+          {/* ─── Row 5: Últimos leads + Seguimiento ─── */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             {/* Recent leads */}
             <SectionCard title="Últimos leads" subtitle="Agregados recientemente">
@@ -630,7 +755,11 @@ export default function DashboardPage() {
               ) : (
                 <div className="divide-y divide-zinc-800/50 -mx-5">
                   {recientes.map((lead) => (
-                    <div key={lead.id} className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-zinc-800/20 transition-colors">
+                    <div
+                      key={lead.id}
+                      onClick={() => openLead(lead.id)}
+                      className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-zinc-800/30 cursor-pointer transition-colors"
+                    >
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <p className="text-sm font-medium text-zinc-200 truncate">{lead.nombre}</p>
@@ -675,8 +804,9 @@ export default function DashboardPage() {
                     return (
                       <div
                         key={lead.id}
+                        onClick={() => openLead(lead.id)}
                         className={cn(
-                          'flex items-center justify-between gap-3 px-5 py-3 hover:bg-zinc-800/20 transition-colors',
+                          'flex items-center justify-between gap-3 px-5 py-3 hover:bg-zinc-800/30 cursor-pointer transition-colors',
                           isOverdue && 'bg-red-500/[0.03]',
                         )}
                       >

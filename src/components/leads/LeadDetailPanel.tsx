@@ -1,11 +1,26 @@
 'use client'
 import { useState } from 'react'
-import type { Lead, PipelineStage } from '@/types/lead.types'
+import type { Lead, LeadPriority, PipelineStage } from '@/types/lead.types'
 import { PIPELINE_STAGES, PIPELINE_STAGE_LABELS, PIPELINE_STAGE_COLORS } from '@/types/pipeline.types'
-import { useUpdateLead, useUpdateLeadStage, useDeleteLead, useAnalyzeLead, useInteractions, useRecordMessageSent } from '@/features/leads/leads.queries'
+import { useUpdateLead, useUpdateLeadStage, useDeleteLead, useAnalyzeLead, useInteractions, useRecordMessageSent, useAddNote } from '@/features/leads/leads.queries'
 import { useUIStore } from '@/store/uiStore'
 import { cn } from '@/lib/utils'
+import { StarRating } from './StarRating'
 import type { Interaction } from '@/types/lead.types'
+
+const inputCls =
+  'w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-600 outline-none focus:border-zinc-600 transition-colors'
+const labelCls = 'text-[11px] text-zinc-500 font-medium'
+
+function formatDateTime(iso: string) {
+  return new Date(iso).toLocaleString('es-AR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
 
 function normalizePhone(p: string): string {
   let s = String(p).replace(/[\s\-\(\)\+\.]/g, '').replace(/\.0+$/, '')
@@ -72,9 +87,25 @@ interface Props {
 export function LeadDetailPanel({ lead }: Props) {
   const { selectLead } = useUIStore()
   const { mutate: updateStage }  = useUpdateLeadStage()
-  const { mutate: updateLead }   = useUpdateLead()
+  const { mutate: updateLead, isPending: savingLead } = useUpdateLead()
   const { mutate: deleteLead }   = useDeleteLead()
   const { mutate: analyzeLead, isPending: analyzing } = useAnalyzeLead()
+  const { mutate: addNote, isPending: savingNote } = useAddNote()
+
+  // Edición de campos del lead (para completar datos faltantes)
+  const [editing, setEditing] = useState(false)
+  const [editForm, setEditForm] = useState({
+    telefono: '',
+    web: '',
+    rubro: '',
+    ciudad: '',
+    direccion: '',
+    prioridad: 'media' as LeadPriority,
+    observaciones: '',
+    tags: '',
+  })
+  // Nota de contacto (abajo de todo)
+  const [noteText, setNoteText] = useState('')
 
   const phone = lead.telefono ? normalizePhone(lead.telefono) : null
 
@@ -92,6 +123,7 @@ export function LeadDetailPanel({ lead }: Props) {
 
   // Rastreador de secuencia D1/D3/D7: qué mensajes de captación ya se enviaron.
   const sentTypes = new Set(interactions.map((i) => i.mensaje_tipo).filter(Boolean) as Interaction['mensaje_tipo'][])
+  const notes = interactions.filter((i) => i.tipo === 'nota')
   const nextMsg: 'd1' | 'd3' | 'd7' | null = !sentTypes.has('d1')
     ? 'd1'
     : !sentTypes.has('d3')
@@ -126,6 +158,56 @@ export function LeadDetailPanel({ lead }: Props) {
 
   function handleAnalyze() {
     analyzeLead(lead)
+  }
+
+  function startEdit() {
+    setEditForm({
+      telefono: lead.telefono ?? '',
+      web: lead.web ?? '',
+      rubro: lead.rubro ?? '',
+      ciudad: lead.ciudad ?? '',
+      direccion: lead.direccion ?? '',
+      prioridad: lead.prioridad,
+      observaciones: lead.observaciones ?? '',
+      tags: (lead.tags ?? []).join(', '),
+    })
+    setEditing(true)
+  }
+
+  function setEdit<K extends keyof typeof editForm>(key: K, value: (typeof editForm)[K]) {
+    setEditForm((f) => ({ ...f, [key]: value }))
+  }
+
+  function saveEdit() {
+    const web = editForm.web.trim()
+    const updates: Partial<Lead> = {
+      telefono: editForm.telefono.trim() || null,
+      web: web || null,
+      tiene_web: !!web,
+      rubro: editForm.rubro.trim() || null,
+      ciudad: editForm.ciudad.trim() || lead.ciudad,
+      direccion: editForm.direccion.trim() || null,
+      prioridad: editForm.prioridad,
+      observaciones: editForm.observaciones.trim() || null,
+      tags: editForm.tags.split(',').map((t) => t.trim()).filter(Boolean),
+    }
+    updateLead(
+      { id: lead.id, updates },
+      { onSuccess: () => setEditing(false) },
+    )
+  }
+
+  function handleRating(value: number | null) {
+    updateLead({ id: lead.id, updates: { rating: value } })
+  }
+
+  function handleSaveNote() {
+    const contenido = noteText.trim()
+    if (!contenido) return
+    addNote(
+      { leadId: lead.id, contenido },
+      { onSuccess: () => setNoteText('') },
+    )
   }
 
   const tempColors = {
@@ -236,44 +318,181 @@ export function LeadDetailPanel({ lead }: Props) {
           </div>
         )}
 
-        {/* Datos de contacto */}
-        <div className="space-y-2">
-          <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide">Contacto</p>
-          <div className="space-y-1.5">
-            {lead.telefono && (
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-zinc-400">{lead.telefono}</span>
-                {phone && (
-                  <a
-                    href={`https://wa.me/${phone}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs px-2 py-0.5 bg-green-500 hover:bg-green-400 text-black rounded font-medium transition-colors"
-                  >
-                    WhatsApp
-                  </a>
-                )}
-              </div>
-            )}
-            {lead.web && (
-              <a
-                href={lead.web}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-blue-400 hover:text-blue-300 block truncate transition-colors"
+        {/* Datos del lead — completar campos faltantes */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide">Datos del lead</p>
+            {!editing && (
+              <button
+                onClick={startEdit}
+                className="text-xs px-2 py-0.5 rounded border border-zinc-800 text-zinc-500 hover:text-zinc-200 hover:border-zinc-600 transition-colors"
               >
-                {lead.web.replace(/https?:\/\//, '')}
-              </a>
-            )}
-            {lead.direccion && (
-              <p className="text-xs text-zinc-500">{lead.direccion}</p>
-            )}
-            {lead.rating && (
-              <p className="text-xs text-amber-400">
-                {'★'.repeat(Math.round(lead.rating))}{'☆'.repeat(Math.max(0, 5 - Math.round(lead.rating)))} {lead.rating}
-              </p>
+                ✎ Editar
+              </button>
             )}
           </div>
+
+          {/* Rating con estrellas — clic para cargar/quitar */}
+          <div className="flex items-center justify-between gap-3 bg-zinc-900/60 border border-zinc-800 rounded-lg px-3 py-2">
+            <span className="text-xs text-zinc-400">Rating</span>
+            <div className="flex items-center gap-2">
+              <StarRating value={lead.rating} onChange={handleRating} />
+              <span className="text-[11px] text-zinc-600 tabular-nums w-10 text-right">
+                {lead.rating != null ? lead.rating : '—'}
+              </span>
+            </div>
+          </div>
+
+          {!editing ? (
+            <div className="space-y-1.5">
+              {lead.telefono && (
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-zinc-400">{lead.telefono}</span>
+                  {phone && (
+                    <a
+                      href={`https://wa.me/${phone}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs px-2 py-0.5 bg-green-500 hover:bg-green-400 text-black rounded font-medium transition-colors"
+                    >
+                      WhatsApp
+                    </a>
+                  )}
+                </div>
+              )}
+              {lead.web && (
+                <a
+                  href={lead.web}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-blue-400 hover:text-blue-300 block truncate transition-colors"
+                >
+                  {lead.web.replace(/https?:\/\//, '')}
+                </a>
+              )}
+              {lead.direccion && (
+                <p className="text-xs text-zinc-500">{lead.direccion}</p>
+              )}
+              <div className="flex items-center gap-2 pt-0.5">
+                <span className="text-[11px] text-zinc-600">Prioridad:</span>
+                <span className={cn(
+                  'text-[10px] font-medium px-1.5 py-0.5 rounded-full border',
+                  lead.prioridad === 'alta'  && 'text-red-400 bg-red-950/40 border-red-900/50',
+                  lead.prioridad === 'media' && 'text-amber-400 bg-amber-950/40 border-amber-900/50',
+                  lead.prioridad === 'baja'  && 'text-zinc-400 bg-zinc-800 border-zinc-700',
+                )}>
+                  {lead.prioridad}
+                </span>
+                {(lead.tags ?? []).length > 0 && (
+                  <span className="text-[11px] text-zinc-600 truncate">
+                    {(lead.tags ?? []).map((t) => `#${t}`).join(' ')}
+                  </span>
+                )}
+              </div>
+              {!lead.telefono && !lead.web && !lead.direccion && (
+                <p className="text-xs text-zinc-600">Sin datos de contacto cargados.</p>
+              )}
+            </div>
+          ) : (
+            <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg p-3 space-y-3">
+              <div className="grid grid-cols-2 gap-2.5">
+                <div className="space-y-1">
+                  <label className={labelCls}>Teléfono</label>
+                  <input
+                    className={inputCls}
+                    placeholder="Ej: 3815123456"
+                    value={editForm.telefono}
+                    onChange={(e) => setEdit('telefono', e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className={labelCls}>Sitio web</label>
+                  <input
+                    className={inputCls}
+                    placeholder="Ej: https://..."
+                    value={editForm.web}
+                    onChange={(e) => setEdit('web', e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className={labelCls}>Rubro</label>
+                  <input
+                    className={inputCls}
+                    placeholder="Ej: Farmacia"
+                    value={editForm.rubro}
+                    onChange={(e) => setEdit('rubro', e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className={labelCls}>Ciudad</label>
+                  <input
+                    className={inputCls}
+                    placeholder="Ej: Tucumán"
+                    value={editForm.ciudad}
+                    onChange={(e) => setEdit('ciudad', e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1 col-span-2">
+                  <label className={labelCls}>Dirección</label>
+                  <input
+                    className={inputCls}
+                    placeholder="Ej: Av. Sarmiento 1234"
+                    value={editForm.direccion}
+                    onChange={(e) => setEdit('direccion', e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className={labelCls}>Prioridad</label>
+                  <select
+                    className={inputCls}
+                    value={editForm.prioridad}
+                    onChange={(e) => setEdit('prioridad', e.target.value as LeadPriority)}
+                  >
+                    <option value="alta">Alta</option>
+                    <option value="media">Media</option>
+                    <option value="baja">Baja</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className={labelCls}>Tags</label>
+                  <input
+                    className={inputCls}
+                    placeholder="separados, por coma"
+                    value={editForm.tags}
+                    onChange={(e) => setEdit('tags', e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className={labelCls}>Observaciones</label>
+                <textarea
+                  rows={3}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-600 outline-none focus:border-zinc-600 transition-colors resize-none"
+                  placeholder="Notas sobre el lead..."
+                  value={editForm.observaciones}
+                  onChange={(e) => setEdit('observaciones', e.target.value)}
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-1 border-t border-zinc-800">
+                <button
+                  onClick={() => setEditing(false)}
+                  disabled={savingLead}
+                  className="text-xs px-3 py-1.5 border border-zinc-800 rounded-lg text-zinc-500 hover:text-zinc-200 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={saveEdit}
+                  disabled={savingLead}
+                  className="text-xs px-3 py-1.5 bg-green-500 hover:bg-green-400 disabled:opacity-50 text-black font-medium rounded-lg transition-colors"
+                >
+                  {savingLead ? 'Guardando...' : 'Guardar cambios'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Análisis IA */}
@@ -365,7 +584,7 @@ export function LeadDetailPanel({ lead }: Props) {
         )}
 
         {/* Observaciones */}
-        {lead.observaciones && (
+        {!editing && lead.observaciones && (
           <div className="space-y-2">
             <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide">Observaciones</p>
             <p className="text-xs text-zinc-400 leading-relaxed">{lead.observaciones}</p>
@@ -387,6 +606,36 @@ export function LeadDetailPanel({ lead }: Props) {
             )}>
               Follow up: {lead.next_follow_up}
             </p>
+          )}
+        </div>
+
+        {/* Nota de contacto */}
+        <div className="space-y-2 pt-4 border-t border-zinc-800">
+          <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide">Nota de contacto</p>
+          <textarea
+            rows={3}
+            value={noteText}
+            onChange={(e) => setNoteText(e.target.value)}
+            placeholder="Qué pasó en el contacto: qué se habló, qué respondió, acuerdos, próximos pasos..."
+            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder:text-zinc-600 outline-none focus:border-zinc-600 transition-colors resize-none"
+          />
+          <button
+            onClick={handleSaveNote}
+            disabled={savingNote || !noteText.trim()}
+            className="w-full text-xs py-2 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-200 border border-zinc-700 rounded-lg transition-colors"
+          >
+            {savingNote ? '⏳ Guardando...' : '+ Agregar nota'}
+          </button>
+
+          {notes.length > 0 && (
+            <div className="space-y-2 pt-1">
+              {notes.map((n) => (
+                <div key={n.id} className="bg-zinc-900/60 border border-zinc-800 rounded-lg p-3">
+                  <p className="text-[10px] text-zinc-600 mb-1">{formatDateTime(n.created_at)}</p>
+                  <p className="text-xs text-zinc-300 whitespace-pre-wrap leading-relaxed">{n.contenido}</p>
+                </div>
+              ))}
+            </div>
           )}
         </div>
 

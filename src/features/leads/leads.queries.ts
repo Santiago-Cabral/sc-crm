@@ -8,7 +8,7 @@ import {
   deleteLead,
   analyzeLeadWithAI,
 } from './leads.service'
-import { fetchInteractions, recordMessageSent } from './interactions.service'
+import { fetchInteractions, recordMessageSent, addNote } from './interactions.service'
 import type { Lead, LeadFilters, PipelineStage, Interaction } from '@/types/lead.types'
 
 export const LEADS_KEY = 'leads'
@@ -95,6 +95,14 @@ export function useRecordMessageSent() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [LEADS_KEY] })
     },
+  })
+}
+
+export function useAddNote() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (params: { leadId: string; contenido: string }) => addNote(params),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [LEADS_KEY] }),
   })
 }
 

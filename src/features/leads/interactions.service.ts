@@ -25,6 +25,26 @@ export async function logInteraction(
   return data as Interaction
 }
 
+// Nota manual sobre el contacto con el lead. Se registra como interacción
+// tipo 'nota' y actualiza la fecha de último contacto del lead.
+export async function addNote(params: { leadId: string; contenido: string }): Promise<void> {
+  const supabase = createClient()
+
+  const { error } = await supabase.from('interactions').insert({
+    lead_id: params.leadId,
+    tipo: 'nota',
+    titulo: 'Nota de contacto',
+    contenido: params.contenido,
+  })
+  if (error) throw error
+
+  const { error: updateError } = await supabase
+    .from('leads')
+    .update({ fecha_ultimo_contacto: new Date().toISOString() })
+    .eq('id', params.leadId)
+  if (updateError) throw updateError
+}
+
 // Siguiente fecha de follow-up según el mensaje que se acaba de enviar.
 // La secuencia del prompt es: D1 → +3 días, D3 → +4 días (hace el día 7),
 // D7 → fin de la secuencia de captación (sin fecha de follow-up automática).
